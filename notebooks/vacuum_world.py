@@ -224,6 +224,7 @@ print("State of the Environment: {}.".format(trivial_vacuum_env.status))
 
 print("RandomVacuumAgent is located at {}.".format(random_agent.location))
 
+
 # %% [markdown]
 # ## TABLE-DRIVEN AGENT PROGRAM
 #
@@ -231,24 +232,45 @@ print("RandomVacuumAgent is located at {}.".format(random_agent.location))
 # In the two-state vacuum world, the table would consist of all the possible states of the agent.
 
 # %%
-table = {((loc_A, 'Clean'),): 'Right',
-             ((loc_A, 'Dirty'),): 'Suck',
-             ((loc_B, 'Clean'),): 'Left',
-             ((loc_B, 'Dirty'),): 'Suck',
-             ((loc_A, 'Dirty'), (loc_A, 'Clean')): 'Right',
-             ((loc_A, 'Clean'), (loc_B, 'Dirty')): 'Suck',
-             ((loc_B, 'Clean'), (loc_A, 'Dirty')): 'Suck',
-             ((loc_B, 'Dirty'), (loc_B, 'Clean')): 'Left',
-             ((loc_A, 'Dirty'), (loc_A, 'Clean'), (loc_B, 'Dirty')): 'Suck',
-             ((loc_B, 'Dirty'), (loc_B, 'Clean'), (loc_A, 'Dirty')): 'Suck'
-        }
+# Create a table-driven agent program for the 2x2 environment
+
+def TableDriven2DAgentProgram(table):
+    percept_sequence = []
+
+    def program(percept):
+        percept_sequence.append(percept)
+
+        if any(isinstance(p, Bump) for p in percept):
+            percept_type = 'Bump'
+        elif any(isinstance(p, Dirt) for p in percept):
+            percept_type = 'Dirty'
+        else:
+            percept_type = 'Clean'
+
+        if not hasattr(program, 'direction'):
+            program.direction = Direction("down")
+
+        if percept_type == 'Dirty':
+            key = (percept_type,)
+        else:
+            key = (percept_type, program.direction.direction)
+
+        action = table.get(key, 'MoveForward')
+
+        if action == 'TurnLeft':
+            program.direction = program.direction + Direction.L
+
+        return action
+
+    return program
+
 
 # %% [markdown]
 # We will now create a table-driven agent program for our two-state environment.
 
 # %%
 # Create a table-driven agent
-table_driven_agent = Agent(program=TableDrivenAgentProgram(table=table))
+table_driven_agent = VacuumAgent2D(TableDriven2DAgentProgram(table))
 
 # %% [markdown]
 # Since we are using the same environment, let's remove the previously added random agent from the environment to avoid confusion.
@@ -258,17 +280,15 @@ trivial_vacuum_env.delete_thing(random_agent)
 
 # %%
 # Add the table-driven agent to the environment
-trivial_vacuum_env.add_thing(table_driven_agent)
+vacuum_env.add_thing(table_driven_agent)
 
 print("TableDrivenVacuumAgent is located at {}.".format(table_driven_agent.location))
 
 # %%
 # Run the environment
-trivial_vacuum_env.step()
+vacuum_env.run()
 
-# Check the current state of the environment
-print("State of the Environment: {}.".format(trivial_vacuum_env.status))
-
+print("Final state of the Environment: {}.".format(vacuum_env.status))
 print("TableDrivenVacuumAgent is located at {}.".format(table_driven_agent.location))
 
 # %% [markdown]
