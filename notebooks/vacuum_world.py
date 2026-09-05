@@ -75,6 +75,7 @@ psource(TrivialVacuumEnvironment)
 
 # %%
 class Vacuum2D(GraphicEnvironment):
+    '''Create graphic environment that allows for a 2D grid'''
     def __init__(self):
         super().__init__(2, 2)
         self.colors.update({
@@ -184,47 +185,6 @@ vacuum_env.run()
 print("Final state of the Environment: {}.".format(vacuum_env.status))
 print("RandomVacuumAgent is located at {}.".format(random_agent.location))
 
-# %%
-# Trivial Vacuum Environment
-
-# These are the two locations for the two-state environment
-loc_A, loc_B = (0, 0), (1, 0)
-
-# Initialize the two-state environment
-trivial_vacuum_env = TrivialVacuumEnvironment()
-
-# Check the initial state of the environment
-print("State of the Environment: {}.".format(trivial_vacuum_env.status))
-
-# %% [markdown]
-# Let's create our agent now. This agent will choose any of the actions from 'Right', 'Left', 'Suck' and 'NoOp' (No Operation) randomly.
-
-# %%
-# Create the random agent
-random_agent = Agent(program=RandomAgentProgram(['Right', 'Left', 'Suck', 'NoOp']))
-
-# %% [markdown]
-# We will now add our agent to the environment.
-
-# %%
-# Add agent to the environment
-trivial_vacuum_env.add_thing(random_agent)
-
-print("RandomVacuumAgent is located at {}.".format(random_agent.location))
-
-# %% [markdown]
-# Let's run our environment now.
-
-# %%
-# Running the environment
-trivial_vacuum_env.step()
-
-# Check the current state of the environment
-print("State of the Environment: {}.".format(trivial_vacuum_env.status))
-
-print("RandomVacuumAgent is located at {}.".format(random_agent.location))
-
-
 # %% [markdown]
 # ## TABLE-DRIVEN AGENT PROGRAM
 #
@@ -232,14 +192,30 @@ print("RandomVacuumAgent is located at {}.".format(random_agent.location))
 # In the two-state vacuum world, the table would consist of all the possible states of the agent.
 
 # %%
-# Create a table-driven agent program for the 2x2 environment
+# Remove random agent from environment
+vacuum_env.delete_thing(random_agent)
 
-def TableDriven2DAgentProgram(table):
+# %%
+table = {
+    ('Dirty',): 'Suck',
+    ('Clean', Direction.D): 'MoveForward',
+    ('Clean', Direction.R): 'MoveForward',
+    ('Clean', Direction.U): 'MoveForward',
+    ('Clean', Direction.L): 'MoveForward',
+    ('Bump', Direction.D): 'TurnLeft',
+    ('Bump', Direction.R): 'TurnLeft',
+    ('Bump', Direction.U): 'TurnLeft',
+    ('Bump', Direction.L): 'TurnLeft'
+}
+
+
+# %%
+# Create a table-driven agent program for the 2x2 environment
+def TableDrivenAgentProgram(table):
     percept_sequence = []
 
     def program(percept):
         percept_sequence.append(percept)
-
         if any(isinstance(p, Bump) for p in percept):
             percept_type = 'Bump'
         elif any(isinstance(p, Dirt) for p in percept):
@@ -256,32 +232,22 @@ def TableDriven2DAgentProgram(table):
             key = (percept_type, program.direction.direction)
 
         action = table.get(key, 'MoveForward')
-
         if action == 'TurnLeft':
             program.direction = program.direction + Direction.L
-
         return action
-
     return program
 
 
-# %% [markdown]
-# We will now create a table-driven agent program for our two-state environment.
-
 # %%
 # Create a table-driven agent
-table_driven_agent = VacuumAgent2D(TableDriven2DAgentProgram(table))
+table_driven_agent = Agent(program=TableDrivenAgentProgram(table=table))
 
-# %% [markdown]
-# Since we are using the same environment, let's remove the previously added random agent from the environment to avoid confusion.
+# Fresh environment so the table-driven agent isn't starting on tiles the random agent already cleaned
+vacuum_env = Vacuum2D()
+print("Initial state of the Environment: {}.".format(vacuum_env.status))
 
-# %%
-trivial_vacuum_env.delete_thing(random_agent)
-
-# %%
 # Add the table-driven agent to the environment
 vacuum_env.add_thing(table_driven_agent)
-
 print("TableDrivenVacuumAgent is located at {}.".format(table_driven_agent.location))
 
 # %%
@@ -304,20 +270,19 @@ print("TableDrivenVacuumAgent is located at {}.".format(table_driven_agent.locat
 # Let us now create a simple reflex agent for the environment.
 
 # %%
-# Delete the previously added table-driven agent
-trivial_vacuum_env.delete_thing(table_driven_agent)
+# Remove table-driven agent from environment
+vacuum_env.delete_thing(table_driven_agent)
+
 
 # %% [markdown]
 # To create our agent, we need two functions: INTERPRET-INPUT function, which generates an abstracted description of the current state from the percerpt and the RULE-MATCH function, which returns the first rule in the set of rules that matches the given state description.
 
 # %%
-
-"""We change the simpleReflexAgentProgram so that it doesn't make use of the Rule class"""
+# We change the simpleReflexAgentProgram so that it doesn't make use of the Rule class
 def SimpleReflexAgentProgram():
     """This agent takes action based solely on the percept. [Figure 2.10]"""
-    
     def program(percept):
-        #If there is dirt, suck, otherwise if there's a wall, turn right, otherwise move forward
+        """If there is dirt, suck, otherwise if there's a wall, turn right, otherwise move forward"""
         for p in percept:
             if isinstance(p, Dirt):
                 return 'Suck'
@@ -325,29 +290,27 @@ def SimpleReflexAgentProgram():
             if isinstance(p, Bump):
                 return 'TurnRight'      
         return 'MoveForward'
-    
     return program
-        
-# Create a simple reflex agent the two-state environment
-program = SimpleReflexAgentProgram()
-simple_reflex_agent = VacuumAgent2D(program)
 
-# %% [markdown]
-# Now add the agent to the environment:
 
 # %%
-vacuum_env = Vacuum2D()
-vacuum_env.add_thing(simple_reflex_agent)
+# Create a simple reflex agent
+simple_reflex_agent = VacuumAgent2D(SimpleReflexAgentProgram())
 
+
+# Fresh environment
+vacuum_env = Vacuum2D()
+print("Initial state of the Environment: {}.".format(vacuum_env.status))
+
+# Add the simple reflex agent to the environment
+vacuum_env.add_thing(simple_reflex_agent)
 print("SimpleReflexVacuumAgent is located at {}.".format(simple_reflex_agent.location))
 
 # %%
 # Run the environment
 vacuum_env.run()
 
-# Check the current state of the environment
-print("State of the Environment: {}.".format(vacuum_env.status))
-
+print("Final state of the Environment: {}.".format(vacuum_env.status))
 print("SimpleReflexVacuumAgent is located at {}.".format(simple_reflex_agent.location))
 
 # %% [markdown]
@@ -363,7 +326,7 @@ print("SimpleReflexVacuumAgent is located at {}.".format(simple_reflex_agent.loc
 
 # %%
 # Delete the previously added simple reflex agent
-trivial_vacuum_env.delete_thing(simple_reflex_agent)
+vacuum_env.delete_thing(simple_reflex_agent)
 
 
 # %% [markdown]
@@ -378,16 +341,16 @@ def update_state(state, action, percept, model):
 model_based_reflex_agent = ModelBasedVacuumAgent()
 
 # Add the agent to the environment
-trivial_vacuum_env.add_thing(model_based_reflex_agent)
+vacuum_env.add_thing(model_based_reflex_agent)
 
 print("ModelBasedVacuumAgent is located at {}.".format(model_based_reflex_agent.location))
 
 # %%
 # Run the environment
-trivial_vacuum_env.step()
+vacuum_env.step()
 
 # Check the current state of the environment
-print("State of the Environment: {}.".format(trivial_vacuum_env.status))
+print("State of the Environment: {}.".format(vacuum_env.status))
 
 print("ModelBasedVacuumAgent is located at {}.".format(model_based_reflex_agent.location))
 
