@@ -7,7 +7,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.19.5
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: tf-metal
 #     language: python
 #     name: python3
 # ---
@@ -213,8 +213,9 @@ table = {
 # Create a table-driven agent program for the 2x2 environment
 def TableDrivenAgentProgram(table):
     percept_sequence = []
-
     def program(percept):
+        nonlocal percept_sequence
+        
         percept_sequence.append(percept)
         if any(isinstance(p, Bump) for p in percept):
             percept_type = 'Bump'
@@ -239,12 +240,12 @@ def TableDrivenAgentProgram(table):
 
 
 # %%
-# Create a table-driven agent
-table_driven_agent = Agent(program=TableDrivenAgentProgram(table=table))
-
-# Fresh environment so the table-driven agent isn't starting on tiles the random agent already cleaned
+# 2x2 Vacuum Environment
 vacuum_env = Vacuum2D()
 print("Initial state of the Environment: {}.".format(vacuum_env.status))
+
+# Create a table-driven agent
+table_driven_agent = VacuumAgent2D(program=TableDrivenAgentProgram(table=table))
 
 # Add the table-driven agent to the environment
 vacuum_env.add_thing(table_driven_agent)
@@ -270,12 +271,9 @@ print("TableDrivenVacuumAgent is located at {}.".format(table_driven_agent.locat
 # Let us now create a simple reflex agent for the environment.
 
 # %%
-# Remove table-driven agent from environment
+# Delete the previously added table-driven agent
 vacuum_env.delete_thing(table_driven_agent)
 
-
-# %% [markdown]
-# To create our agent, we need two functions: INTERPRET-INPUT function, which generates an abstracted description of the current state from the percerpt and the RULE-MATCH function, which returns the first rule in the set of rules that matches the given state description.
 
 # %%
 # We change the simpleReflexAgentProgram so that it doesn't make use of the Rule class
@@ -293,14 +291,16 @@ def SimpleReflexAgentProgram():
     return program
 
 
+# %% [markdown]
+# Now add the agent to the environment:
+
 # %%
-# Create a simple reflex agent
-simple_reflex_agent = VacuumAgent2D(SimpleReflexAgentProgram())
-
-
-# Fresh environment
+# 2x2 Vacuum Environment
 vacuum_env = Vacuum2D()
 print("Initial state of the Environment: {}.".format(vacuum_env.status))
+
+# Create a simple reflex agent
+simple_reflex_agent = VacuumAgent2D(SimpleReflexAgentProgram())
 
 # Add the simple reflex agent to the environment
 vacuum_env.add_thing(simple_reflex_agent)
@@ -329,29 +329,99 @@ print("SimpleReflexVacuumAgent is located at {}.".format(simple_reflex_agent.loc
 vacuum_env.delete_thing(simple_reflex_agent)
 
 
-# %% [markdown]
-# We need another function UPDATE-STATE which will be responsible for creating a new state description.
+# %%
+def update_state(state, action, percept, model):
+    '''Updates the current state based on the action of the agent and percept'''
+    if action == 'TurnRight':
+        state['direction'] = state['direction'] + Direction.R
+    elif action == 'TurnLeft':
+        state['direction'] = state['direction'] + Direction.L
+    elif action == 'MoveForward':
+        x, y = state['location']
+        if state['direction'].direction == 'down':
+            y += 1
+        elif state['direction'].direction == 'up':
+            y -= 1
+        elif state['direction'].direction == 'left':
+            x -= 1
+        elif state['direction'].direction == 'right':
+            x += 1
+        state['location'] = (x, y)
+        
+    if any(isinstance(p, Dirt) for p in percept): # if current tile has dirt
+        model[state['location']] = 'Dirty' # mark dirty
+    else:
+        model[state['location']] = 'Clean' # otherwise mark clean
+    return state
+
+def ModelBasedReflexAgentProgram():
+    last_action = None # what agent did last
+    state = { # initial state
+        'location': (0, 1),
+        'direction': Direction("down"),
+    }
+    model = { # all tiles are unknown at start so assume they are dirty
+                (0, 0): 'Dirty',
+                (0, 1): 'Dirty',
+                (1, 0): 'Dirty',
+                (1, 1): 'Dirty',
+            }
+    
+    def program(percept):
+        nonlocal last_action, state, model
+        
+        state = update_state(state, last_action, percept, model) # get current state
+        curr_loc = state['location'] # get current location
+        if model[state['location']] == 'Dirty': # check if current location is actually dirty and suck if it is
+            last_action = 'Suck'
+            return last_action
+        else:
+            model[state['location']] = 'Clean' # otherwise set current location to clean
+        
+        dirty_tiles = [loc for loc, status in model.items() if status == 'Dirty'] # get remaining dirty tiles
+        if len(dirty_tiles) == 0: # check if all tiles are clean and do nothing if so
+            last_action = 'NoOp'
+            return last_action
+        
+        nearest_dirty_tile = min(dirty_tiles, key=lambda loc: abs(curr_loc[0] - loc[0]) + abs(curr_loc[1] - loc[1]))
+        tx, ty = nearest_dirty_tile # target location
+        cx, cy = curr_loc # current location
+        if ty > cy:
+            dirty_tile_dir = 'down'
+        elif ty < cy:
+            dirty_tile_dir = 'up'
+        elif tx > cx:
+            dirty_tile_dir = 'right'
+        elif tx < cx:
+            dirty_tile_dir = 'left'
+        else:
+            dirty_tile_dir = state['direction'].direction
+        
+        if state['direction'].direction == dirty_tile_dir: # move forward if facing a dirty tile otherwise turn until facing dirty tile
+            last_action = 'MoveForward'
+        else:
+            last_action = 'TurnRight'
+        return last_action
+    return program
+
 
 # %%
-# TODO: Implement this function for the two-dimensional environment
-def update_state(state, action, percept, model):
-    pass
+# 2x2 Vacuum Environment
+vacuum_env = Vacuum2D()
+print("Initial state of the Environment: {}.".format(vacuum_env.status))
 
 # Create a model-based reflex agent
-model_based_reflex_agent = ModelBasedVacuumAgent()
+model_based_reflex_agent = VacuumAgent2D(ModelBasedReflexAgentProgram())
 
-# Add the agent to the environment
-vacuum_env.add_thing(model_based_reflex_agent)
-
-print("ModelBasedVacuumAgent is located at {}.".format(model_based_reflex_agent.location))
+# Add the simple reflex agent to the environment
+vacuum_env.add_thing(model_based_reflex_agent, (0, 1)) # specify location so inital state matches
+print("ModelBasedReflexAgent is located at {}.".format(model_based_reflex_agent.location))
 
 # %%
 # Run the environment
-vacuum_env.step()
+vacuum_env.run()
 
-# Check the current state of the environment
 print("State of the Environment: {}.".format(vacuum_env.status))
-
 print("ModelBasedVacuumAgent is located at {}.".format(model_based_reflex_agent.location))
 
 # %% [markdown]
